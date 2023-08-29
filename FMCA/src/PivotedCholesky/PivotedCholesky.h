@@ -151,6 +151,7 @@ class PivotedCholesky {
       info_ = 2;
     else
       info_ = 0;
+    //
     // crop L, indices to their actual size
     L_.conservativeResize(dim, step);
     B_.conservativeResize(dim, step);
