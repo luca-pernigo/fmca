@@ -87,6 +87,78 @@ class PivotedCholesky {
     return;
   }
 
+  void computeBiorthogonal(const CovarianceKernel &ker, const FMCA::Matrix &P,
+               FMCA::Scalar tol = 1e-3) {
+    const FMCA::Index dim = P.cols();
+    const FMCA::Index max_cols = max_size_ / dim > dim ? dim : max_size_ / dim;
+    FMCA::Vector D(dim);
+    FMCA::Index pivot = 0;
+    FMCA::Scalar tr = 0;
+    L_.resize(dim, max_cols);
+    B_.resize(dim, max_cols);
+    indices_.resize(max_cols);
+    
+    
+    FMCA::Vector ej(dim);
+
+    tol_ = tol;
+    // compute the diagonal and the trace
+    for (auto i = 0; i < dim; ++i) {
+      const FMCA::Matrix wtf = ker.eval(P.col(i), P.col(i));
+      D(i) = wtf(0, 0);
+      if (D(i) < 0) {
+        info_ = 1;
+        return;
+      }
+    }
+    tr = D.sum();
+    // we guarantee the error tr(A-LL^T)/tr(A) < tol
+    tol *= tr;
+    // perform pivoted Cholesky decomposition
+    std::cout << "N: " << dim << " max number of cols: " << max_cols
+              << " rel tol: " << tol << " initial trace: " << tr << std::endl;
+    FMCA::Index step = 0;
+    
+    while ((step < max_cols) && (tol < tr)) {
+      D.maxCoeff(&pivot);
+      indices_(step) = pivot;
+      // get new column from C
+      L_.col(step) = ker.eval(P, P.col(pivot));
+      // update column with the current matrix Lmatrix_
+      L_.col(step) -= L_.leftCols(step) * L_.row(pivot).head(step).transpose();
+      ej.setZero();
+      ej(pivot) = 1;
+       
+      B_.col(step) = ej;
+      B_.col(step) -= B_.leftCols(step) * L_.row(pivot).head(step).transpose();
+      
+      if (L_(pivot, step) <= 0) {
+        info_ = 2;
+        std::cout << "breaking with non positive pivot\n";
+        break;
+      }
+      L_.col(step) /= sqrt(D(pivot));
+      B_.col(step) /= sqrt(D(pivot));
+
+      // update the diagonal and the trace
+      D.array() -= L_.col(step).array().square();
+      // compute the trace of the Schur complement
+      tr = D.sum();
+      ++step;
+    }
+    std::cout << "steps: " << step << " trace error: " << tr << std::endl;
+    if (tr < 0)
+      info_ = 2;
+    else
+      info_ = 0;
+    // crop L, indices to their actual size
+    L_.conservativeResize(dim, step);
+    B_.conservativeResize(dim, step);
+    
+    indices_.conservativeResize(step);
+    return;
+  }
+
   void computeFullPiv(const CovarianceKernel &ker, const FMCA::Matrix &P,
                       FMCA::Scalar tol = 1e-3) {
     const FMCA::Index dim = P.cols();
